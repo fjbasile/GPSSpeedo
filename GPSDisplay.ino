@@ -1,42 +1,18 @@
-// Test code for Adafruit GPS modules using MTK3329/MTK3339 driver
-//
-// This code shows how to listen to the GPS module in an interrupt
-// which allows the program to have more 'freedom' - just parse
-// when a new NMEA sentence is available! Then access data when
-// desired.
-//
-// Tested and works great with the Adafruit Ultimate GPS module
-// using MTK33x9 chipset
-//    ------> http://www.adafruit.com/products/746
-// Pick one up today at the Adafruit electronics shop 
-// and help support open source hardware & software! -ada
-
 #include <Adafruit_GPS.h>
 #include <SoftwareSerial.h>
 #include <Wire.h>
+
 // If you're using a GPS module:
 // Connect the GPS Power pin to 5V
 // Connect the GPS Ground pin to ground
 // If using software serial (sketch example default):
 //   Connect the GPS TX (transmit) pin to Digital 3
 //   Connect the GPS RX (receive) pin to Digital 2
-// If using hardware serial (e.g. Arduino Mega):
-//   Connect the GPS TX (transmit) pin to Arduino RX1, RX2 or RX3
-//   Connect the GPS RX (receive) pin to matching TX1, TX2 or TX3
 
-// If you're using the Adafruit GPS shield, change 
-// SoftwareSerial mySerial(3, 2); -> SoftwareSerial mySerial(8, 7);
-// and make sure the switch is set to SoftSerial
 
 // If using software serial, keep this line enabled
 // (you can change the pin numbers to match your wiring):
 SoftwareSerial mySerial(3, 2);
-
-// If using hardware serial (e.g. Arduino Mega), comment out the
-// above SoftwareSerial line, and enable this line instead
-// (you can change the Serial number to match your wiring):
-
-//HardwareSerial mySerial = Serial1;
 
 
 Adafruit_GPS GPS(&mySerial);
@@ -50,24 +26,35 @@ Adafruit_GPS GPS(&mySerial);
 // off by default!
 boolean usingInterrupt = false;
 void useInterrupt(boolean); // Func prototype keeps Arduino 0023 happy
-const byte s7sAddress = 0x71;
-char tempString[10];
 
+//address of the 7 segment led display
+const byte s7sAddress = 0x71;
+
+//state of input switch
 int state = 0;
+//last state of input switch
 int lastState = 0;
+//viewing mode (can be 0,1,2,3)
 int mode = 0;
 
 void setup()  
 {
+  //set up pins for switch logic
   pinMode(6,OUTPUT);
   pinMode(5,INPUT);
 
+  //begin communication with 7-segment display
   Wire.begin();
+  //clear the display and set cursor to the left
   clearDisplayI2C();
 
+  //set display brightness - default is 255 (full high)
   setBrightnessI2C(255);
   delay(1000);
+
+  //clear the display one final time and set the cursor to the left
   clearDisplayI2C();
+  
   // connect at 115200 so we can read the GPS fast enough and echo without dropping chars
   // also spit it out
   Serial.begin(115200);
@@ -81,9 +68,10 @@ void setup()
 
   
   // Set the update rate
-  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);   // 1 Hz update rate
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);   // 10 Hz update rate
   // For the parsing code to work nicely and have time to sort thru the data, and
   // print it out we don't suggest using anything higher than 1 Hz
+  //Frank set this to 10HZ to provide GPS updates as quickly as possible
 
   // Request updates on antenna status, comment out to keep quiet
   GPS.sendCommand(PGCMD_ANTENNA);
@@ -128,7 +116,9 @@ void useInterrupt(boolean v) {
 uint32_t timer = millis();
 void loop()                     // run over and over again
 {
+  //put an output on pin 6 - logical voltage for mode select switch
   digitalWrite(6, HIGH);
+  
   // in case you are not using the interrupt above, you'll
   // need to 'hand query' the GPS, not suggested :(
   if (! usingInterrupt) {
@@ -153,19 +143,22 @@ void loop()                     // run over and over again
   // if millis() or timer wraps around, we'll just reset it
   if (timer > millis())  timer = millis();
 
-  // approximately every 2 seconds or so, print out the current stats
+  // approximately every 2 millisecondseconds, we'll get GPS data and update the display
   if (millis() - timer > 200) { 
     timer = millis(); // reset the timer
-    
-    
+
+    //if the GPS has a fix
     if (GPS.fix)
     {
+      //call the method that determines the current status/mode to be displayed
       determineState();
     }
 
     else
     {
+      //set all decimals and colons to 0
       setDecimalsI2C(0b000000);
+      //show failure screen
       s7sSendStringI2C("5hiT");
     }
   }
@@ -174,55 +167,73 @@ void loop()                     // run over and over again
 
 void determineState()
 {
+  //read pin 5 to get the curernt switch state
   state = digitalRead(5);
+  //if the current state doesn't equal the last state AND the current state is low:
   if (state != lastState && state == LOW)
   {
+    //increment the mode
     mode ++;
     if (mode > 3)
     {
-      mode = 0;
+      mode = 0; //set the mode back to 0 if all modes have been cycled
     }
   }
+  //for debounce
   delay(50);
+  //set the last known switch state to the current switch state
   lastState = state;
+  //call the display generation method
   generateDisplay();
 }
 
 void generateDisplay()
 {
-  switch (mode)
+  switch (mode) //mode is the variable the switch-case is looking at
   {
-    case 0: 
-        displaySpeed();
+    case 0: //if mode equals 0
+        displaySpeed(); //call the displaySpeed method
         break;
-    case 1:
-        displayAngle();
+    case 1: //if mode equals 1
+        displayAngle(); //call the displayAngle method
         break;
-    case 2: 
-        displayTime();
+    case 2: //if mode equals 2
+        displayTime(); //call the displayTime method
         break;
-    case 3:
-        displaySats();
+    case 3: //if mode equals 3
+        displaySats(); //call the displaySats() method
         break;
   }
 }
 
+
 void displaySpeed()
 {
+  //blank all decimals and colons
   setDecimalsI2C(0b000000);
+  //convert GPS speed from knots to mph and reduce to integer
   int mphNum = int(GPS.speed*1.15078);
+  //turn the previously calculated number into a String
   String mph = String(mphNum);
+  //placeholder value for the final output
   String output = "";
+
+  //if speed is less than 10
   if (mphNum >= 0 && mphNum < 10)
   {
+      //provide proper spacing to ensure both digits are in the middle of display
       output = "  " + mph +" ";
   }
+  
   else
   {
+      //same as above - provides proper spacing
       output = " " + mph + " ";
   }
+  //output the speed to the 7-segment display
   s7sSendStringI2C(output);
 }
+
 
 void displayAngle()
 {
