@@ -237,74 +237,103 @@ void displaySpeed()
 
 void displayAngle()
 {
+  //receive angle from GPS and convert it to an int
   int angleNum = int(GPS.angle);
+  //convert the integer angle to a string
   String angle = String(angleNum);
+  //placeholder for final output
   String output = "";
+
+  //angle between 0 and 9
   if (angleNum >0 && angleNum < 10)
   {
     output = "H  " + angle;
   }
 
+  //angle between 10 and 99
   else if (angleNum >= 10 && angleNum < 100)
   {
     output = "H " + angle;
   }
 
+  //angle greater than 100
   else if (angleNum >= 100) 
   {
     output = "H" + angle;
   }
+
+  //send the formatted angle string to the display
   s7sSendStringI2C(output);
 }
 
 void displayTime()
 {
+  //retrieve the hour from GPS
   int hourNum = GPS.hour;
+  //retrieve the minute from GPS
   int minNum = GPS.minute;
+  //convert the hour and minute into string format  
   String hour; 
   String minutes; 
 
+  //if hour is between 0 and 9
   if (hourNum < 10)
   {
+    //add a 0 to the front of it
     hour = "0" + String(hourNum);
   }
 
+  //otherwise keep it the same
   else
   {
     hour = String(hourNum);
   }
 
+  //if the minutes are between 0 and 9
   if (minNum < 10)
   {
+    //add a 0 to the front
     minutes = "0" + String(minNum);
   }
 
+  //otherwise keep it the same
   else
   {
     minutes = String(minNum);
   }
  
-  
+  //combine the hours and minutes
   s7sSendStringI2C(hour + minutes);
-  
+
+  //turn the colon on
   setDecimalsI2C(0b00010000);
 
 }
 
+
 void displaySats()
 {
+  //holder value for string value of satellites
   String sats;
+
+  //if num satellites is less than 10
   if (GPS.satellites < 10)
   {
+    //add a 0 to the front of the string
     sats = "0" + String(GPS.satellites);
   }
 
+  //if greater than 10
   else
   {
+    //use the number of satellites
     sats = String(GPS.satellites);
   }
+
+  //output the number of satellites to the displayu
   s7sSendStringI2C("5t" + sats);
 }
+
 void s7sSendStringI2C(String toSend)
 {
   Wire.beginTransmission(s7sAddress);
